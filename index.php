@@ -1,6 +1,7 @@
 <?php
 session_start();
-include_once 'conexao.php'; // Inclui o arquivo de conexão com o banco
+include_once 'conexao.php';
+include 'partials/menu.php'; // Inclui o menu no topo
 
 // Verifica se o usuário está logado
 if (!isset($_SESSION['usuario_id'])) {
@@ -8,66 +9,53 @@ if (!isset($_SESSION['usuario_id'])) {
     exit;
 }
 
-echo "Bem-vindo, " . htmlspecialchars($_SESSION['usuario_nome']) . "!";
+// Verifica se o usuário tem pets cadastrados
+$sqlVerificaPets = "SELECT COUNT(*) AS total FROM pets WHERE usuario_id = :usuario_id";
+$stmtVerificaPets = $conn->prepare($sqlVerificaPets);
+$stmtVerificaPets->bindParam(':usuario_id', $_SESSION['usuario_id']);
+$stmtVerificaPets->execute();
+$temPets = $stmtVerificaPets->fetch(PDO::FETCH_ASSOC)['total'] > 0;
 
-// Busca os pets do usuário logado
-$sql = "SELECT * FROM pets WHERE usuario_id = :usuario_id";
-$stmt = $conn->prepare($sql);
-$stmt->bindParam(':usuario_id', $_SESSION['usuario_id']);
-$stmt->execute();
-$pets = $stmt->fetchAll(PDO::FETCH_ASSOC);
+if (!$temPets) {
+    echo "<p>Você ainda não cadastrou nenhum pet. <a href='meus_pets.php'>Cadastre aqui</a> para começar a dar matches!</p>";
+    exit;
+}
+
+// Busca os pets de outros usuários
+$sqlOutrosPets = "SELECT * FROM pets WHERE usuario_id != :usuario_id";
+$stmtOutrosPets = $conn->prepare($sqlOutrosPets);
+$stmtOutrosPets->bindParam(':usuario_id', $_SESSION['usuario_id']);
+$stmtOutrosPets->execute();
+$outrosPets = $stmtOutrosPets->fetchAll(PDO::FETCH_ASSOC);
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Plataforma PetMatch</title>
-    <style>
-        ul {
-            list-style-type: none;
-            padding: 0;
-        }
-        li {
-            margin-bottom: 20px;
-        }
-        img {
-            display: block;
-            margin-top: 10px;
-        }
-    </style>
+    <title>Buscar Pets</title>
 </head>
 <body>
-    <h1>Página Inicial</h1>
-    <p>Bem-vindo(a) à plataforma PetMatch!</p>
-    <h2>Seus Pets</h2>
-    <?php if (!empty($pets)): ?>
+    <h1>Buscar Pets para Match</h1>
+    <?php if (!empty($outrosPets)): ?>
         <ul>
-            <?php foreach ($pets as $pet): ?>
+            <?php foreach ($outrosPets as $pet): ?>
                 <li>
                     <strong><?= htmlspecialchars($pet['nome']) ?></strong> - <?= htmlspecialchars($pet['raca']) ?> (<?= htmlspecialchars($pet['idade']) ?> anos)
                     <p><?= htmlspecialchars($pet['descricao']) ?></p>
                     <?php if (!empty($pet['foto'])): ?>
-                        <?php
-                        // Detecta o tipo MIME da imagem diretamente no PHP
-                        $imgData = stream_get_contents($pet['foto']); // Garante que a imagem é uma string
-                        $finfo = new finfo(FILEINFO_MIME_TYPE); // Inicializa o finfo
-                        $mimeType = $finfo->buffer($imgData); // Detecta o tipo MIME
-                        ?>
-                        <?php if (in_array($mimeType, ['image/jpeg', 'image/png', 'image/jfif'])): ?>
-                            <img src="data:<?= $mimeType ?>;base64,<?= base64_encode($imgData) ?>" alt="Foto do pet" style="width: 150px;">
-                        <?php else: ?>
-                            <p>Formato de imagem não suportado.</p>
-                        <?php endif; ?>
-                    <?php else: ?>
-                        <p>Imagem não disponível.</p>
+                        <img src="data:image/jpeg;base64,<?= base64_encode(stream_get_contents($pet['foto'])) ?>" alt="Foto do pet" style="width: 150px;">
                     <?php endif; ?>
+                    <form method="POST" action="pages/match.php">
+                        <input type="hidden" name="pet1_id" value="<?= $pet['id'] ?>">
+                        <button type="submit" name="acao" value="like">Curtir</button>
+                        <button type="submit" name="acao" value="pass">Ignorar</button>
+                    </form>
                 </li>
             <?php endforeach; ?>
         </ul>
     <?php else: ?>
-        <p>Você ainda não cadastrou nenhum pet.</p>
+        <p>Não há pets disponíveis para match no momento. Tente novamente mais tarde.</p>
     <?php endif; ?>
-    <a href="pages/logout.php">Sair</a>
 </body>
 </html>
